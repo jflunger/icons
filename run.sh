@@ -7,8 +7,23 @@
 set -euo pipefail
 
 PORT="${PORT:?vibe sets PORT; run this through vibe, not by hand}"
+cd "$(dirname "$0")"
+
+# Create/refresh the venv only when requirements.txt changes.
+if [ ! -x .venv/bin/python ]; then
+  echo "creating .venv"
+  python3 -m venv .venv
+fi
+stamp=".venv/.requirements.sha"
+want="$(sha256sum requirements.txt | cut -d' ' -f1)"
+if [ "$(cat "$stamp" 2>/dev/null)" != "$want" ]; then
+  echo "installing requirements"
+  .venv/bin/pip install -q -r requirements.txt
+  echo "$want" > "$stamp"
+fi
 
 echo "icons starting on port $PORT"
-
-# Replace this with the real server. It must stay in the foreground.
-exec python3 -m http.server "$PORT" --bind 0.0.0.0
+# The server also runs the weekly ingest (python -m iconsearch.ingest) itself,
+# and builds the index on first start if data/icons.db is missing.
+exec .venv/bin/uvicorn iconsearch.server:app --host 0.0.0.0 --port "$PORT" \
+  --workers 1 --no-access-log --proxy-headers

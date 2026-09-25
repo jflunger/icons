@@ -1,0 +1,33 @@
+[server]
+# run.sh overrides host/port with 0.0.0.0 and $PORT under vibe.
+host = "127.0.0.1"
+port = 8765
+# Optional HTTP basic auth, "user:password". The ICONSEARCH_AUTH env var wins over this.
+basic_auth = ""
+# Default size (px) for Copy PNG.
+png_size = 512
+
+[ingest]
+data_dir = "data"
+# "weekly", "daily" or "off". The server runs the ingest itself on this schedule.
+schedule = "weekly"
+license_allowlist = ["MIT", "ISC", "Apache-2.0", "CC0-1.0", "CC-BY-4.0"]
+
+# Iconify prefix -> options. Adding a set only needs an entry here.
+[sets.lucide]
+enabled = true
+[sets.tabler]
+enabled = true
+[sets.ph]            # Phosphor
+enabled = true
+[sets.heroicons]
+enabled = true
+[sets.bi]            # Bootstrap Icons
+enabled = true
+[sets.iconoir]
+enabled = true
+[sets.fluent]
+enabled = true
+keep_sizes = [24]    # Fluent ships 10-48px duplicates; keep one (nearest size if 24 is missing)
+[sets.carbon]
+enabled = true

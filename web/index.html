@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Icon Search</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%232563eb' stroke-width='2.5' stroke-linecap='round'%3E%3Ccircle cx='10.5' cy='10.5' r='6.5'/%3E%3Cpath d='m20 20-4.5-4.5'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+<div id="insecure-banner" class="banner" hidden>
+  This page isn't a secure context (it's not on <code>https://</code> or <code>localhost</code>), so the browser blocks
+  image clipboard access. <b>Drag</b> and <b>Download</b> work; <b>Copy SVG</b> falls back to plain text; <b>Copy PNG</b> is unavailable.
+  Serve it over HTTPS to enable copying.
+</div>
+
+<header class="toolbar">
+  <div class="row top">
+    <label class="search">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m20 20-4.5-4.5"/></svg>
+      <input id="q" type="search" placeholder="Search icons  ( / )" autocomplete="off" spellcheck="false" autofocus aria-label="Search icons">
+    </label>
+    <div class="controls">
+      <div class="ctl color-ctl">
+        <label for="color" class="lbl">Colour</label>
+        <input id="color" type="color" value="#ffffff" aria-label="Icon colour">
+        <input id="color-hex" type="text" maxlength="7" spellcheck="false" aria-label="Colour hex">
+        <div id="swatches" class="swatches" aria-label="Saved colours"></div>
+        <button id="save-swatch" class="icon-btn" title="Save colour as swatch" aria-label="Save colour as swatch">+</button>
+      </div>
+      <div class="ctl">
+        <label for="size" class="lbl">Size</label>
+        <input id="size" type="number" min="16" max="2048" step="8" value="128" aria-label="Export size in px">
+        <span class="unit">px</span>
+      </div>
+      <div class="ctl">
+        <label for="stroke" class="lbl">Stroke</label>
+        <input id="stroke" type="range" min="0" max="4" step="0.25" value="0" aria-label="Stroke width">
+        <output id="stroke-out">auto</output>
+      </div>
+      <div class="ctl">
+        <span class="lbl">Bg</span>
+        <div class="seg" id="bg-mode" role="radiogroup" aria-label="Preview background">
+          <button data-bg="auto" title="Pick a background that contrasts with the icon colour">Auto</button>
+          <button data-bg="light" title="White background">Light</button>
+          <button data-bg="dark" title="Dark background">Dark</button>
+          <button data-bg="checker" title="Transparency checkerboard">▦</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="row providers" id="providers" aria-label="Providers"></div>
+  <div class="row filters">
+    <label class="ctl"><span class="lbl">Variant</span>
+      <select id="variant"><option value="">any</option></select></label>
+    <label class="ctl"><span class="lbl">Category</span>
+      <select id="category"><option value="">any</option></select></label>
+    <div class="seg" id="view-mode" role="tablist" aria-label="View">
+      <button data-view="search">Results</button>
+      <button data-view="favs">Favourites <span id="fav-count" class="count"></span></button>
+      <button data-view="recent">Recent</button>
+    </div>
+    <span id="status" class="status" aria-live="polite"></span>
+    <a class="muted small" href="/licenses">Licenses</a>
+  </div>
+</header>
+
+<main class="layout">
+  <section class="grid-wrap" id="grid-wrap">
+    <div id="grid" class="grid" role="listbox" aria-label="Icons" tabindex="-1"></div>
+    <div id="sentinel" class="sentinel"></div>
+    <div id="empty" class="empty" hidden></div>
+  </section>
+
+  <aside id="detail" class="detail" hidden aria-label="Icon details">
+    <button id="detail-close" class="icon-btn close" title="Close (Esc)" aria-label="Close">×</button>
+    <div id="preview" class="preview" title="Drag into PowerPoint, Keynote, Figma or Finder"></div>
+    <p class="drag-hint">Drag the preview (or any tile) into your slide</p>
+    <h2 id="d-name" class="d-name"></h2>
+    <p id="d-set" class="muted small"></p>
+    <div id="d-variants" class="chips small-chips"></div>
+    <div class="actions">
+      <button id="copy-svg" class="btn primary" title="c">Copy SVG</button>
+      <div class="btn-group">
+        <button id="copy-png" class="btn" title="p">Copy PNG</button>
+        <select id="png-size" aria-label="PNG size">
+          <option>256</option><option selected>512</option><option>1024</option><option>2048</option>
+        </select>
+      </div>
+      <a id="download" class="btn" href="#">Download SVG</a>
+    </div>
+    <div class="actions secondary">
+      <button id="fav" class="btn ghost" title="f">☆ Favourite</button>
+      <button id="collect" class="btn ghost">＋ Collection</button>
+      <button id="similar" class="btn ghost">Similar icons</button>
+    </div>
+    <div id="d-tags" class="tags"></div>
+    <p id="d-license" class="muted small"></p>
+  </aside>
+</main>
+
+<div id="collection-bar" class="collection-bar" hidden>
+  <span id="coll-label"></span>
+  <div id="coll-items" class="coll-items"></div>
+  <a id="coll-zip" class="btn primary" href="#">Download ZIP</a>
+  <button id="coll-clear" class="btn ghost">Clear</button>
+</div>
+
+<div id="toasts" class="toasts" aria-live="polite"></div>
+<div id="drag-ghost" class="drag-ghost" aria-hidden="true"></div>
+<script src="/static/app.js"></script>
+</body>
+</html>

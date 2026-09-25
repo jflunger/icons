@@ -14,3 +14,7 @@ build/
 *.egg-info/
 *.log
 .DS_Store
+
+# icon-search runtime data (downloaded tarballs, sqlite db, ingest state)
+data/
+.pytest_cache/
