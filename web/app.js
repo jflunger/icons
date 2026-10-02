@@ -433,9 +433,10 @@ function refreshDownloadLinks() {
 // PowerPoint only inserts a picture for a native <img> drag: the browser then supplies the
 // image itself plus an HTML <img src> that Office downloads. Custom setData (URL text,
 // Chrome's DownloadURL) lands as a hyperlink. So on hover each tile/preview gets an invisible
-// PNG <img> on top, loaded before the drag starts, and dragstart leaves the data alone.
+// SVG <img> on top, loaded before the drag starts, and dragstart leaves the data alone.
+// SVG (not PNG) so Finder/Figma get a vector file; PowerPoint may not accept an SVG <img>.
 function armDrag(el, icon) {
-  const src = svgUrl(icon, { absolute: true, ext: "png" });
+  const src = svgUrl(icon, { absolute: true });
   let img = el.querySelector("img.drag-src");
   if (!img) {
     img = document.createElement("img");

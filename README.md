@@ -153,7 +153,7 @@ The SVG endpoint:
   | `Esc` | close detail, then clear the search |
 
   Double-clicking a tile copies its SVG.
-- **Drag:** on `dragstart`, tiles and the detail preview set `DownloadURL` (`image/svg+xml:<file>:<absolute url>`), `text/uri-list` and `text/plain`. Chrome is the target browser; Safari drag is unreliable.
+- **Drag:** on hover, tiles and the detail preview get an invisible `<img>` of the `.svg` endpoint, so the browser's native image drag drops an `.svg` file (e.g. into Finder). Earlier versions dragged a PNG for PowerPoint, which may not accept an SVG drop.
 - **Copy PNG:** fetches the SVG, draws it to a canvas at the chosen size (256/512/1024/2048, default 512) and writes an `image/png` ClipboardItem.
 - **Copy SVG:** writes `text/plain` plus `image/svg+xml` where supported.
 
