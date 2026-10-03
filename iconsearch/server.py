@@ -484,7 +484,7 @@ def licenses():
     )
     return f"""<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Icon licenses</title><link rel="stylesheet" href="/static/styles.css"></head>
+<title>Icon licenses</title><script src="/static/theme.js"></script><link rel="stylesheet" href="/static/styles.css"></head>
 <body class="page"><main class="licenses">
 <p><a href="/">&larr; Back to search</a></p>
 <h1>Icon set licenses</h1>

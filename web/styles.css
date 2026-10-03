@@ -14,28 +14,31 @@
   --shadow: 0 1px 2px rgb(0 0 0 / .06), 0 4px 16px rgb(0 0 0 / .06);
   --radius: 10px;
   --icon-color: #000000;
-  --checker: repeating-conic-gradient(#e6e7ea 0 25%, #fff 0 50%) 0 0 / 16px 16px;
+  --banner-bg: #fff4d6;
+  --banner-text: #5c4300;
+  --banner-border: #f0d58a;
   color-scheme: light;
   font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
 }
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #111317;
-    --surface: #1a1d23;
-    --surface-2: #23262e;
-    --border: #2e323b;
-    --text: #e8eaee;
-    --muted: #979ca7;
-    --accent: #6d9bff;
-    --accent-soft: #1f2d4d;
-    --accent-text: #0b1020;
-    --tile-bg: #1a1d23;
-    --tile-hover: #232833;
-    --danger: #ff8a80;
-    --shadow: 0 1px 2px rgb(0 0 0 / .4), 0 4px 16px rgb(0 0 0 / .3);
-    --checker: repeating-conic-gradient(#2a2d35 0 25%, #1c1f25 0 50%) 0 0 / 16px 16px;
-    color-scheme: dark;
-  }
+:root[data-theme="dark"] {
+  --bg: #111317;
+  --surface: #1a1d23;
+  --surface-2: #23262e;
+  --border: #2e323b;
+  --text: #e8eaee;
+  --muted: #979ca7;
+  --accent: #6d9bff;
+  --accent-soft: #1f2d4d;
+  --accent-text: #0b1020;
+  --tile-bg: #1a1d23;
+  --tile-hover: #232833;
+  --danger: #ff8a80;
+  --shadow: 0 1px 2px rgb(0 0 0 / .4), 0 4px 16px rgb(0 0 0 / .3);
+  --icon-color: #ffffff;
+  --banner-bg: #3a2f10;
+  --banner-text: #f5dd9b;
+  --banner-border: #5a4a1a;
+  color-scheme: dark;
 }
 
 * { box-sizing: border-box; }
@@ -50,9 +53,9 @@ code { font-size: .92em; }
 [hidden] { display: none !important; }
 
 .banner {
-  background: #fff4d6; color: #5c4300; padding: 8px 16px; font-size: 13px; border-bottom: 1px solid #f0d58a;
+  background: var(--banner-bg); color: var(--banner-text); padding: 8px 16px; font-size: 13px;
+  border-bottom: 1px solid var(--banner-border);
 }
-@media (prefers-color-scheme: dark) { .banner { background: #3a2f10; color: #f5dd9b; border-color: #5a4a1a; } }
 
 /* ---------- toolbar ---------- */
 .toolbar {
@@ -69,10 +72,6 @@ code { font-size: .92em; }
 .ctl { display: inline-flex; align-items: center; gap: 6px; }
 .lbl { font-size: 12px; color: var(--muted); }
 .unit { font-size: 12px; color: var(--muted); }
-#color { width: 30px; height: 30px; padding: 0; border: 1px solid var(--border); border-radius: 6px; background: none; cursor: pointer; }
-#color::-webkit-color-swatch-wrapper { padding: 2px; }
-#color::-webkit-color-swatch { border: 0; border-radius: 4px; }
-#color-hex { width: 76px; font-family: ui-monospace, Menlo, monospace; font-size: 12px; }
 input[type=text], input[type=number], select {
   background: var(--surface-2); border: 1px solid var(--border); border-radius: 6px; padding: 5px 7px; height: 30px;
 }
@@ -80,9 +79,6 @@ input[type=number] { width: 72px; }
 #category, #variant { max-width: 220px; }
 input[type=range] { width: 90px; accent-color: var(--accent); }
 output { font-size: 12px; min-width: 32px; color: var(--muted); font-variant-numeric: tabular-nums; }
-.swatches { display: inline-flex; gap: 4px; }
-.swatch { width: 20px; height: 20px; border-radius: 5px; border: 1px solid var(--border); cursor: pointer; padding: 0; }
-.swatch.active { outline: 2px solid var(--accent); outline-offset: 1px; }
 .icon-btn { width: 26px; height: 26px; border-radius: 6px; border: 1px solid var(--border); background: var(--surface-2);
   cursor: pointer; line-height: 1; padding: 0; }
 .icon-btn:hover { border-color: var(--accent); }
@@ -125,15 +121,6 @@ output { font-size: 12px; min-width: 32px; color: var(--muted); font-variant-num
   background: var(--text); color: var(--bg); font-size: 11px; padding: 2px 6px; border-radius: 4px; pointer-events: none;
   opacity: 0; transition: opacity .1s; z-index: 3; }
 .tile:hover .name, .tile.sel .name { opacity: 1; }
-
-/* background modes for previews */
-.bg-light .tile, .bg-light .preview { background: #fff; }
-.bg-dark .tile, .bg-dark .preview { background: #15171c; }
-.bg-light .tile:hover { background: #f1f3f7; }
-.bg-dark .tile:hover { background: #242833; }
-.bg-checker .tile, .bg-checker .preview { background: var(--checker); }
-.bg-light .tile .badge { color: #8a8f99; }
-.bg-dark .tile .badge { color: #7d828c; }
 
 /* custom stroke width preview: CSS beats presentation attributes */
 .custom-stroke .tile svg [stroke-width], .custom-stroke .preview svg [stroke-width],
@@ -199,7 +186,6 @@ output { font-size: 12px; min-width: 32px; color: var(--muted); font-variant-num
 @media (max-width: 800px) {
   .toolbar { position: static; }
   .controls { gap: 10px; }
-  .color-ctl .swatches, #save-swatch { display: none; }
   .detail { position: fixed; left: 0; right: 0; bottom: 0; width: auto; max-height: 72vh; border-left: 0;
     border-top: 1px solid var(--border); box-shadow: var(--shadow); z-index: 9; border-radius: 14px 14px 0 0; }
   .preview { max-height: 160px; }

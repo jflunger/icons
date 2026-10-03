@@ -3,7 +3,6 @@
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const PAGE = 300;
-const DEFAULT_SWATCHES = ["#ffffff", "#000000", "#1f2937", "#2563eb", "#dc2626", "#16a34a"];
 
 // ------------------------------------------------------------------ storage
 const store = {
@@ -18,7 +17,7 @@ const store = {
 
 // ------------------------------------------------------------------ state
 const prefs = Object.assign(
-  { color: "#ffffff", size: 128, stroke: 0, bg: "auto", swatches: DEFAULT_SWATCHES, pngSize: 512 },
+  { size: 128, stroke: 0, pngSize: 512 },
   store.get("prefs.v2", {}),
 );
 const S = {
@@ -38,7 +37,10 @@ const S = {
 
 // ------------------------------------------------------------------ helpers
 function savePrefs() { store.set("prefs.v2", prefs); }
-function hex() { return prefs.color.replace("#", "").toLowerCase(); }
+// Icons are black on the light theme and white on the dark one (theme.js sets data-theme).
+function theme() { return document.documentElement.dataset.theme === "dark" ? "dark" : "light"; }
+function iconColor() { return theme() === "dark" ? "#ffffff" : "#000000"; }
+function hex() { return iconColor().slice(1); }
 
 function svgUrl(icon, { size = prefs.size, dl = false, absolute = false, ext = "svg" } = {}) {
   const p = new URLSearchParams({ color: hex(), size: String(size) });
@@ -116,52 +118,20 @@ function writeUrl() {
 }
 
 // ------------------------------------------------------------------ controls
-// "Auto" keeps the icon visible: dark tiles for light icons, light tiles for
-// dark icons, and the theme's own tiles for mid-tone colours.
-function autoBg(color) {
-  const [r, g, b] = [1, 3, 5].map(i => parseInt(color.slice(i, i + 2), 16) / 255);
-  const lum = 0.2126 * r + 0.7152 * g + 0.0722 * b;
-  return lum > 0.7 ? "dark" : lum < 0.2 ? "light" : "theme";
-}
-
 function applyVisualPrefs() {
-  document.documentElement.style.setProperty("--icon-color", prefs.color);
-  const body = document.body;
-  body.classList.remove("bg-light", "bg-dark", "bg-checker", "bg-theme");
-  body.classList.add("bg-" + (prefs.bg === "auto" ? autoBg(prefs.color) : prefs.bg));
-  body.classList.toggle("custom-stroke", prefs.stroke > 0);
-  $("#color").value = prefs.color;
-  $("#color-hex").value = prefs.color;
+  document.body.classList.toggle("custom-stroke", prefs.stroke > 0);
   $("#size").value = prefs.size;
   $("#stroke").value = prefs.stroke;
   $("#stroke-out").textContent = prefs.stroke > 0 ? prefs.stroke.toFixed(2).replace(/\.?0+$/, "") : "auto";
   $("#png-size").value = String(prefs.pngSize);
-  for (const b of document.querySelectorAll("#bg-mode button")) b.classList.toggle("on", b.dataset.bg === prefs.bg);
-  renderSwatches();
+  for (const b of document.querySelectorAll("#theme-mode button")) b.classList.toggle("on", b.dataset.theme === theme());
 }
 
-function renderSwatches() {
-  const box = $("#swatches");
-  box.innerHTML = "";
-  for (const c of prefs.swatches) {
-    const b = document.createElement("button");
-    b.className = "swatch" + (c.toLowerCase() === prefs.color.toLowerCase() ? " active" : "");
-    b.style.background = c;
-    b.title = `${c} (right-click to remove)`;
-    b.onclick = () => setColor(c);
-    b.oncontextmenu = e => {
-      e.preventDefault();
-      prefs.swatches = prefs.swatches.filter(x => x !== c);
-      savePrefs(); renderSwatches();
-    };
-    box.appendChild(b);
-  }
-}
-
-function setColor(c) {
-  if (!/^#[0-9a-f]{6}$/i.test(c)) return;
-  prefs.color = c.toLowerCase();
-  savePrefs(); applyVisualPrefs();
+// The icon colour follows the theme, so server-rendered URLs (drag images, downloads) change too.
+function setTheme(t, save = true) {
+  document.documentElement.dataset.theme = t;
+  if (save) store.set("theme", t);
+  applyVisualPrefs();
   refreshDownloadLinks();
 }
 
@@ -176,16 +146,6 @@ function rerenderStroke() {
 }
 
 function bindControls() {
-  $("#color").addEventListener("input", e => setColor(e.target.value));
-  $("#color-hex").addEventListener("change", e => {
-    let v = e.target.value.trim();
-    if (!v.startsWith("#")) v = "#" + v;
-    if (/^#[0-9a-f]{6}$/i.test(v)) setColor(v); else { toast("Use a 6-digit hex colour, e.g. #1f2937", true); applyVisualPrefs(); }
-  });
-  $("#save-swatch").addEventListener("click", () => {
-    prefs.swatches = [prefs.color, ...prefs.swatches.filter(c => c !== prefs.color)].slice(0, 6);
-    savePrefs(); renderSwatches();
-  });
   $("#size").addEventListener("change", e => {
     prefs.size = Math.max(16, Math.min(2048, parseInt(e.target.value, 10) || 128));
     savePrefs(); applyVisualPrefs(); refreshDownloadLinks();
@@ -194,9 +154,13 @@ function bindControls() {
     prefs.stroke = parseFloat(e.target.value) || 0;
     savePrefs(); applyVisualPrefs(); rerenderStroke(); refreshDownloadLinks();
   });
-  for (const b of document.querySelectorAll("#bg-mode button")) {
-    b.addEventListener("click", () => { prefs.bg = b.dataset.bg; savePrefs(); applyVisualPrefs(); });
+  for (const b of document.querySelectorAll("#theme-mode button")) {
+    b.addEventListener("click", () => setTheme(b.dataset.theme));
   }
+  // Without an explicit choice, keep following the OS setting.
+  matchMedia("(prefers-color-scheme: dark)").addEventListener("change", e => {
+    if (store.get("theme", null) == null) setTheme(e.matches ? "dark" : "light", false);
+  });
   $("#png-size").addEventListener("change", e => { prefs.pngSize = +e.target.value; savePrefs(); });
 
   const onQ = debounce(() => { S.q = $("#q").value.trim(); setView("search"); }, 120);
@@ -452,7 +416,7 @@ function setDrag(e, icon) {
   dt.effectAllowed = "copy";
   const ghost = $("#drag-ghost");
   ghost.innerHTML = inlineSvg(icon);
-  ghost.style.color = prefs.color;
+  ghost.style.color = iconColor();
   dt.setDragImage(ghost, 32, 32);
   pushRecent(icon);
 }

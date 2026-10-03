@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Icon Search</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%232563eb' stroke-width='2.5' stroke-linecap='round'%3E%3Ccircle cx='10.5' cy='10.5' r='6.5'/%3E%3Cpath d='m20 20-4.5-4.5'/%3E%3C/svg%3E">
+<script src="/static/theme.js"></script>
 <link rel="stylesheet" href="/static/styles.css">
 </head>
 <body>
@@ -21,13 +22,6 @@
       <input id="q" type="search" placeholder="Search icons  ( / )" autocomplete="off" spellcheck="false" autofocus aria-label="Search icons">
     </label>
     <div class="controls">
-      <div class="ctl color-ctl">
-        <label for="color" class="lbl">Colour</label>
-        <input id="color" type="color" value="#ffffff" aria-label="Icon colour">
-        <input id="color-hex" type="text" maxlength="7" spellcheck="false" aria-label="Colour hex">
-        <div id="swatches" class="swatches" aria-label="Saved colours"></div>
-        <button id="save-swatch" class="icon-btn" title="Save colour as swatch" aria-label="Save colour as swatch">+</button>
-      </div>
       <div class="ctl">
         <label for="size" class="lbl">Size</label>
         <input id="size" type="number" min="16" max="2048" step="8" value="128" aria-label="Export size in px">
@@ -39,12 +33,10 @@
         <output id="stroke-out">auto</output>
       </div>
       <div class="ctl">
-        <span class="lbl">Bg</span>
-        <div class="seg" id="bg-mode" role="radiogroup" aria-label="Preview background">
-          <button data-bg="auto" title="Pick a background that contrasts with the icon colour">Auto</button>
-          <button data-bg="light" title="White background">Light</button>
-          <button data-bg="dark" title="Dark background">Dark</button>
-          <button data-bg="checker" title="Transparency checkerboard">▦</button>
+        <span class="lbl">Theme</span>
+        <div class="seg" id="theme-mode" role="radiogroup" aria-label="Theme">
+          <button data-theme="light" title="Light page, black icons">Light</button>
+          <button data-theme="dark" title="Dark page, white icons">Dark</button>
         </div>
       </div>
     </div>
