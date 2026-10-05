@@ -17,7 +17,7 @@ const store = {
 
 // ------------------------------------------------------------------ state
 const prefs = Object.assign(
-  { size: 128, stroke: 0, pngSize: 512 },
+  { size: 128, stroke: 0, pngSize: 512, drag: "ppt" },
   store.get("prefs.v2", {}),
 );
 const S = {
@@ -62,7 +62,7 @@ function setName(prefix) {
   return s ? s.name : prefix;
 }
 
-const BADGE = { lucide: "LU", tabler: "TB", ph: "PH", heroicons: "HI", bi: "BI", iconoir: "IO", fluent: "FL", carbon: "CB" };
+const BADGE = { lucide: "LU", tabler: "TB", ph: "PH", heroicons: "HI", bi: "BI", iconoir: "IO", fluent: "FL", carbon: "CB", "material-symbols": "MS" };
 function badge(prefix) { return BADGE[prefix] || prefix.slice(0, 2).toUpperCase(); }
 
 function escapeHtml(s) {
@@ -124,6 +124,8 @@ function applyVisualPrefs() {
   $("#stroke").value = prefs.stroke;
   $("#stroke-out").textContent = prefs.stroke > 0 ? prefs.stroke.toFixed(2).replace(/\.?0+$/, "") : "auto";
   $("#png-size").value = String(prefs.pngSize);
+  document.body.classList.toggle("drag-ppt", prefs.drag === "ppt");
+  for (const b of document.querySelectorAll("#drag-mode button")) b.classList.toggle("on", b.dataset.drag === prefs.drag);
   for (const b of document.querySelectorAll("#theme-mode button")) b.classList.toggle("on", b.dataset.theme === theme());
 }
 
@@ -161,6 +163,9 @@ function bindControls() {
   matchMedia("(prefers-color-scheme: dark)").addEventListener("change", e => {
     if (store.get("theme", null) == null) setTheme(e.matches ? "dark" : "light", false);
   });
+  for (const b of document.querySelectorAll("#drag-mode button")) {
+    b.addEventListener("click", () => { prefs.drag = b.dataset.drag; savePrefs(); applyVisualPrefs(); });
+  }
   $("#png-size").addEventListener("change", e => { prefs.pngSize = +e.target.value; savePrefs(); });
 
   const onQ = debounce(() => { S.q = $("#q").value.trim(); setView("search"); }, 120);
@@ -316,6 +321,7 @@ function appendTiles(items) {
     t.innerHTML = inlineSvg(icon) + `<span class="badge">${badge(icon.prefix)}</span>` +
       (favs.has(icon.id) ? `<span class="star">★</span>` : "") +
       `<span class="name">${escapeHtml(icon.base_name)}</span>`;
+    armDrag(t, icon);
     frag.appendChild(t);
   }
   grid.appendChild(frag);
@@ -344,6 +350,8 @@ async function openDetail(icon) {
 
 function renderPreview() {
   $("#preview").innerHTML = inlineSvg(S.detail);
+  armDrag($("#preview"), S.detail);
+  primeDrag(S.detail);
 }
 
 function renderDetail() {
@@ -390,29 +398,76 @@ function closeDetail() {
 
 function refreshDownloadLinks() {
   if (S.detail) $("#download").href = svgUrl(S.detail, { dl: true });
+  for (const t of document.querySelectorAll(".tile")) armDrag(t, S.items[+t.dataset.i]);
+  if (S.detail) armDrag($("#preview"), S.detail);
   renderCollection();
 }
 
 // ------------------------------------------------------------------ drag
-// PowerPoint only inserts a picture for a native <img> drag: the browser then supplies the
-// image itself plus an HTML <img src> that Office downloads. Custom setData (URL text,
-// Chrome's DownloadURL) lands as a hyperlink. So on hover each tile/preview gets an invisible
-// SVG <img> on top, loaded before the drag starts, and dragstart leaves the data alone.
-// SVG (not PNG) so Finder/Figma get a vector file; PowerPoint may not accept an SVG <img>.
+// Two drag modes, picked in the toolbar, because no single drag suits both targets:
+// - "file": a native drag of an invisible SVG <img> on top of each tile/preview. Edge/Chrome
+//   hand over the SVG bytes and a promised .svg file, so Finder and Figma get a vector file.
+//   PowerPoint for Mac ignores both and drops nothing.
+// - "ppt": the tile itself is dragged with only text/html set to an <img> whose src is the SVG
+//   as a data: URL. PowerPoint for Mac inserts that as a real SVG graphic (Convert to Shape
+//   works). It needs no download, which matters because PowerPoint never fetches our URLs.
+// Earlier dead ends: URL text and Chrome's DownloadURL land as a hyperlink or nothing, and an
+// SVG <img> drag gives PowerPoint nothing. A PNG <img> works but is only a picture.
+// Both modes need their data ready before dragstart, so the <img> is created when a tile is
+// rendered (lazy, so only tiles near the viewport fetch) and the SVG text is fetched on hover.
+const svgTextCache = new Map();
+
 function armDrag(el, icon) {
+  el.draggable = true;
   const src = svgUrl(icon, { absolute: true });
   let img = el.querySelector("img.drag-src");
   if (!img) {
     img = document.createElement("img");
     img.className = "drag-src";
     img.alt = icon.name;
+    img.loading = "lazy";
     el.appendChild(img);
   }
   if (img.src !== src) img.src = src;
 }
 
+function primeDrag(icon) {
+  if (prefs.drag !== "ppt") return;
+  const url = svgUrl(icon);
+  if (svgTextCache.has(url)) return;
+  svgTextCache.set(url, null);
+  fetch(url).then(r => r.ok ? r.text() : Promise.reject())
+    .then(t => svgTextCache.set(url, t), () => svgTextCache.delete(url));
+}
+
+function pptHtml(icon) {
+  const text = svgTextCache.get(svgUrl(icon));
+  if (!text) return null;
+  const data = "data:image/svg+xml;base64," + btoa(unescape(encodeURIComponent(text)));
+  const w = Math.round(prefs.size * icon.width / Math.max(icon.width, icon.height));
+  const h = Math.round(prefs.size * icon.height / Math.max(icon.width, icon.height));
+  return `<img src="${data}" width="${w}" height="${h}" alt="${escapeHtml(icon.name)}">`;
+}
+
 function setDrag(e, icon) {
   const dt = e.dataTransfer;
+  if (prefs.drag === "ppt") {
+    const html = pptHtml(icon);
+    if (!html) {
+      e.preventDefault();
+      primeDrag(icon);
+      toast("Icon still loading, drag again in a moment.", true);
+      return;
+    }
+    dt.setData("text/html", html);
+  } else {
+    const img = e.target.closest(".tile, #preview")?.querySelector("img.drag-src");
+    if (!img || !img.complete || !img.naturalWidth) {
+      e.preventDefault();
+      toast("Icon still loading, drag again in a moment.", true);
+      return;
+    }
+  }
   dt.effectAllowed = "copy";
   const ghost = $("#drag-ghost");
   ghost.innerHTML = inlineSvg(icon);
@@ -568,13 +623,13 @@ function bindGrid() {
   });
   grid.addEventListener("pointerover", e => {
     const t = e.target.closest(".tile");
-    if (t) armDrag(t, S.items[+t.dataset.i]);
+    if (t) primeDrag(S.items[+t.dataset.i]);
   });
   grid.addEventListener("dragstart", e => {
     const t = e.target.closest(".tile");
     if (t) setDrag(e, S.items[+t.dataset.i]);
   });
-  $("#preview").addEventListener("pointerover", () => { if (S.detail) armDrag($("#preview"), S.detail); });
+  $("#preview").addEventListener("pointerover", () => { if (S.detail) primeDrag(S.detail); });
   $("#preview").addEventListener("dragstart", e => { if (S.detail) setDrag(e, S.detail); });
 
   const io = new IntersectionObserver(entries => {

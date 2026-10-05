@@ -29,6 +29,12 @@ RULES: dict[str, tuple[list[tuple[str, str]], str]] = {
     "iconoir": ([("-solid", "solid")], "regular"),
 }
 
+# Material Symbols: the bare name is the filled glyph and "-outline" the outlined
+# one; each comes in default, rounded and sharp styles.
+MATERIAL_RULES = [("-outline-rounded", "rounded"), ("-outline-sharp", "sharp"), ("-outline", "outline"),
+                  ("-rounded", "rounded-filled"), ("-sharp", "sharp-filled")]
+MATERIAL_UNFILL = {"filled": "outline", "rounded-filled": "rounded", "sharp-filled": "sharp"}
+
 FLUENT_RE = re.compile(r"^(?P<base>.+)-(?P<size>\d+)-(?P<variant>regular|filled|light|color)$")
 
 
@@ -36,7 +42,26 @@ def _slug(label: str) -> str:
     return re.sub(r"[^a-z0-9]+", "-", label.lower()).strip("-") or "default"
 
 
-def detect(prefix: str, name: str, suffixes: dict[str, str] | None = None) -> Variant:
+def _material(name: str, aliases: list[str]) -> Variant:
+    base, variant = name, "filled"
+    for suffix, v in MATERIAL_RULES:
+        if name.endswith(suffix) and len(name) > len(suffix):
+            base, variant = name[: -len(suffix)], v
+            break
+    # When filling makes no difference, Iconify keeps the filled name and turns
+    # the outline name into an alias; label those as the outline variant.
+    if variant in MATERIAL_UNFILL:
+        style = name[len(base):]
+        if f"{base}-outline{style}" in aliases:
+            variant = MATERIAL_UNFILL[variant]
+    return Variant(base, variant)
+
+
+def detect(prefix: str, name: str, suffixes: dict[str, str] | None = None,
+           aliases: list[str] | None = None) -> Variant:
+    if prefix == "material-symbols":
+        return _material(name, aliases or [])
+
     if prefix == "fluent":
         m = FLUENT_RE.match(name)
         if m:

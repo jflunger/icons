@@ -1,13 +1,14 @@
 # Icon Search
 
-A self-hosted search over ~31,000 free, commercially usable icons from 8 sets
-(Lucide, Tabler, Phosphor, Heroicons, Bootstrap Icons, Iconoir, Fluent UI, Carbon).
+A self-hosted search over ~47,000 free, commercially usable icons from 9 sets
+(Lucide, Tabler, Phosphor, Heroicons, Bootstrap Icons, Iconoir, Fluent UI, Carbon,
+Google's Material Symbols).
 Recolour, resize and change the stroke width, then drag an icon into PowerPoint as a
 vector SVG, copy it as SVG or PNG, or download it.
 
 - **Backend:** FastAPI and SQLite FTS5 (`iconsearch/`)
 - **Frontend:** one static page with vanilla JS (`web/`), no build step
-- **Data:** per-set `@iconify-json/<prefix>` npm packages plus 4 tag enrichers, rebuilt weekly
+- **Data:** per-set `@iconify-json/<prefix>` npm packages plus 5 tag enrichers, rebuilt weekly
 
 ## Running
 
@@ -78,6 +79,7 @@ links one (Carbon links none), and is bundled into ZIP exports.
 | `lucide-static` | `tags.json`: `{name: [tags]}` (no categories) |
 | `@tabler/icons` | `icons.json`: `{name: {category, tags}}` |
 | `@phosphor-icons/core` | `dist/index.mjs` is JS only. Tags and categories are **regex-extracted** (no Node needed); categories map through the `e` enum at the top of the file |
+| `fonts.google.com/metadata/icons?key=material_symbols` | Material Symbols tags. Not on npm, so it's fetched on every rebuild and cached as `data/cache/google-fonts-icons.json` (the fallback if the fetch fails). Strip the `)]}'` first line, then read the JSON. Names use `_` where Iconify uses `-`. Tags on more than 3% of icons ("home", "arrow", …) and style words are dropped as noise |
 | `twbs/icons` (GitHub) | `docs/content/icons/*.md` YAML front matter. The tag is the npm `bootstrap-icons` version, and the tarball comes from codeload.github.com |
 
 Enricher match rates are logged on every build. They were all 100% on 2026-09-24, and a drop
@@ -93,10 +95,16 @@ below 85% logs a warning that the upstream format has probably changed.
 | bi | `-fill` | outline / fill |
 | iconoir | `-solid` | regular / solid |
 | fluent | `-<size>-regular/filled/light` | regular / filled / light |
+| material-symbols | bare = filled, `-outline`, `-rounded`, `-outline-rounded`, `-sharp`, `-outline-sharp` | outline / filled / rounded / rounded-filled / sharp / sharp-filled |
 | lucide, carbon | none | default |
 
 For Fluent, `keep_sizes = [24]` keeps the 24 px version of each icon. If an icon has no
 24 px version, the nearest size is kept, so nothing is lost (6,102 of 19,850 kept).
+Material Symbols has no plain `-filled` suffix: the bare name is the filled glyph. Where filling makes no
+difference, Iconify keeps only the bare name and makes `-outline` an alias, so those icons are labelled
+`outline` (every base name has an outline variant). A style that is identical to another one, often
+`-sharp`, is also just an alias and doesn't get its own variant.
+
 Unknown sets fall back to the package's `suffixes` map.
 
 ## Adding a set
@@ -153,7 +161,9 @@ The SVG endpoint:
   | `Esc` | close detail, then clear the search |
 
   Double-clicking a tile copies its SVG.
-- **Drag:** on hover, tiles and the detail preview get an invisible `<img>` of the `.svg` endpoint, so the browser's native image drag drops an `.svg` file (e.g. into Finder). Earlier versions dragged a PNG for PowerPoint, which may not accept an SVG drop.
+- **Drag:** the toolbar's **Drag** switch picks one of two modes, saved per browser:
+  - **PowerPoint** (default): the tile is dragged with only `text/html` set, an `<img>` whose `src` is the SVG as a base64 `data:` URL. PowerPoint for Mac inserts it as a real SVG graphic (Convert to Shape works).
+  - **File:** the browser's native drag of an invisible SVG `<img>` over each tile/preview, so Finder and Figma get an `.svg` file. PowerPoint drops nothing in this mode.
 - **Copy PNG:** fetches the SVG, draws it to a canvas at the chosen size (256/512/1024/2048, default 512) and writes an `image/png` ClipboardItem.
 - **Copy SVG:** writes `text/plain` plus `image/svg+xml` where supported.
 
@@ -168,18 +178,15 @@ at `http://<host>:9005`, so the page shows a banner there:
 The public URL is `icon.adun.ai`. nginx proxies it to port 9005 (see `deploy/nginx-icon.conf`), and `certbot --nginx -d icon.adun.ai` adds HTTPS, which re-enables copying. On other hosts,
 put HTTPS in front of the app. For example, use `tailscale serve 9005`, or add a Caddy or nginx site with a certificate that proxies to `127.0.0.1:9005`.
 
-### Drag-and-drop test matrix (manual, fill in on a Mac)
+### Drag-and-drop results (Edge on macOS, Oct 2026)
 
-| Target (Chrome → …) | Result |
-|---|---|
-| PowerPoint for Mac | _not yet tested_ |
-| Keynote | _not yet tested_ |
-| Finder desktop | _not yet tested_ (expected: `.svg` file via DownloadURL) |
-| Figma | _not yet tested_ |
-
-If PowerPoint rejects `DownloadURL`, the fallback in the plan is to drag an `<img>` of a
-PNG endpoint instead. That endpoint isn't built yet, because server-side PNG needs a
-rasteriser such as cairosvg.
+| Drag data | PowerPoint for Mac | Finder |
+|---|---|---|
+| SVG `<img>` (native image drag) | nothing | `.svg` file |
+| PNG `<img>` | picture (bitmap) | `.png` file |
+| `text/html` with a `data:` SVG `<img>` | **SVG graphic** | nothing |
+| PNG `<img>` + `DownloadURL` | nothing | not tested |
+| URL text | hyperlink | — |
 
 ## Tests
 
@@ -190,7 +197,7 @@ rasteriser such as cairosvg.
 
 ## Licensing
 
-All 8 default sets are MIT, ISC or Apache-2.0, and each is checked at every ingest. The
+All 9 default sets are MIT, ISC or Apache-2.0, and each is checked at every ingest. The
 `/licenses` page lists version, author and license for each set. ZIP exports include each
 set's LICENSE. If this is ever hosted publicly or used to redistribute files, keep
 that bundling.

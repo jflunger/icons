@@ -135,6 +135,8 @@ output { font-size: 12px; min-width: 32px; color: var(--muted); font-variant-num
 .preview svg { width: 55%; height: 55%; pointer-events: none; }
 .preview { position: relative; }
 .drag-src { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: grab; }
+.drag-ppt .drag-src { display: none; }
+.drag-ppt .tile, .drag-ppt .preview { cursor: grab; }
 .drag-hint { text-align: center; font-size: 11px; color: var(--muted); margin: 6px 0 10px; }
 .d-name { font-size: 16px; margin: 0 0 2px; word-break: break-all; font-family: ui-monospace, Menlo, monospace; font-weight: 600; }
 .chips { display: flex; flex-wrap: wrap; gap: 5px; margin: 10px 0; }

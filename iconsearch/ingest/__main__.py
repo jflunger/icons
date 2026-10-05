@@ -71,7 +71,7 @@ def fingerprint(cfg) -> str:
 
 def build_set(conn, s: iconify.IconSet, set_cfg, synonyms, enrich: bool, client, cfg, res: SetResult):
     # Variants and size filtering
-    detected = [(ic.name, variants.detect(s.prefix, ic.name, s.suffixes)) for ic in s.icons]
+    detected = [(ic.name, variants.detect(s.prefix, ic.name, s.suffixes, ic.aliases)) for ic in s.icons]
     keep = variants.filter_sizes(detected, set_cfg.keep_sizes)
     vmap = dict(detected)
     icons = [ic for ic in s.icons if ic.name in keep]
@@ -184,14 +184,14 @@ def carry_over(conn, prefix: str, live_path) -> int:
 
 
 def print_summary(results: list[SetResult], total_s: float) -> None:
-    head = f"{'set':<11}{'version':<10}{'status':<9}{'icons':>7}  {'enriched':<9}{'time':>6}  notes"
+    head = f"{'set':<18}{'version':<10}{'status':<9}{'icons':>7}  {'enriched':<9}{'time':>6}  notes"
     print(head)
     print("-" * len(head))
     for r in results:
-        print(f"{r.prefix:<11}{r.version:<10}{r.status:<9}{r.icons:>7}  {r.enriched:<9}"
+        print(f"{r.prefix:<18}{r.version:<10}{r.status:<9}{r.icons:>7}  {r.enriched:<9}"
               f"{r.seconds:>5.1f}s  {'; '.join(r.notes)}")
     print("-" * len(head))
-    print(f"{'total':<30}{sum(r.icons for r in results):>7}  {'':<9}{total_s:>5.1f}s")
+    print(f"{'total':<37}{sum(r.icons for r in results):>7}  {'':<9}{total_s:>5.1f}s")
     sys.stdout.flush()
 
 

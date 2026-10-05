@@ -33,7 +33,8 @@ synonyms = Synonyms.load(cfg.synonyms_path)
 
 # Variant display order for sibling lists and the "any" preference.
 VARIANT_ORDER = ["default", "regular", "outline", "thin", "light", "bold", "fill", "filled",
-                 "solid", "mini", "micro", "duotone"]
+                 "solid", "mini", "micro", "duotone",
+                 "rounded", "rounded-filled", "sharp", "sharp-filled"]
 
 
 # ---------------------------------------------------------------- scheduler

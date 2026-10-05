@@ -31,3 +31,5 @@ enabled = true
 keep_sizes = [24]    # Fluent ships 10-48px duplicates; keep one (nearest size if 24 is missing)
 [sets.carbon]
 enabled = true
+[sets.material-symbols]  # Google Fonts Material Symbols
+enabled = true

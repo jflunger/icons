@@ -21,7 +21,7 @@ call them without naming it.
 - `iconsearch/server.py`: FastAPI app. It also runs the ingest on a schedule, in a background thread that starts a subprocess.
 - `iconsearch/ingest/`: `python -m iconsearch.ingest` rebuilds `data/icons.db` from npm/GitHub and swaps it in atomically.
 - `web/`: static frontend (index.html, app.js, styles.css). There is no build step, and the files are served with `no-cache`.
-- `data/` is gitignored: `icons.db` (~30 MB), `cache/` tarballs and `state.json`.
+- `data/` is gitignored: `icons.db` (~60 MB), `cache/` tarballs and `state.json`.
 - Config lives in `config.toml` (sets, schedule, license allowlist) and `synonyms.toml`.
 - Tests: `.venv/bin/python -m pytest -q`. See README.md for details.
 - Public URL: `icon.adun.ai`, served by nginx (`/etc/nginx/sites-available/icon`, source copy in `deploy/nginx-icon.conf`) proxying to 127.0.0.1:9005. TLS comes from `certbot --nginx -d icon.adun.ai`, and after that certbot owns the installed file.

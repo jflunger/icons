@@ -29,6 +29,21 @@ def test_detect_known_sets(prefix, name, base, variant):
     assert (v.base_name, v.variant) == (base, variant)
 
 
+@pytest.mark.parametrize("name,aliases,base,variant", [
+    ("home", ["home-outline"], "home", "outline"),        # filling makes no difference
+    ("home", [], "home", "filled"),
+    ("home-outline", [], "home", "outline"),
+    ("home-rounded", [], "home", "rounded-filled"),
+    ("home-rounded", ["home-outline-rounded"], "home", "rounded"),
+    ("home-outline-rounded", [], "home", "rounded"),
+    ("home-sharp", [], "home", "sharp-filled"),
+    ("home-outline-sharp", [], "home", "sharp"),
+    ("outline", [], "outline", "filled"),
+])
+def test_detect_material_symbols(name, aliases, base, variant):
+    assert detect("material-symbols", name, aliases=aliases) == Variant(base, variant)
+
+
 def test_detect_fluent():
     assert detect("fluent", "add-circle-24-regular") == Variant("add-circle", "regular", 24)
     assert detect("fluent", "add-32-light") == Variant("add", "light", 32)
