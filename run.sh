@@ -25,5 +25,5 @@ fi
 echo "icons starting on port $PORT"
 # The server also runs the weekly ingest (python -m iconsearch.ingest) itself,
 # and builds the index on first start if data/icons.db is missing.
-exec .venv/bin/uvicorn iconsearch.server:app --host 0.0.0.0 --port "$PORT" \
+exec .venv/bin/uvicorn iconsearch.server:app --host 127.0.0.1 --port "$PORT" \
   --workers 1 --no-access-log --proxy-headers
