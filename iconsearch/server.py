@@ -16,12 +16,13 @@ import zipfile
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 
-from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi import FastAPI, Header, HTTPException, Query, Request
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 from . import config as config_mod
 from . import db, svg
+from .cart import ICON_KEYS, Cart
 from .ingest.normalize import Synonyms
 
 log = logging.getLogger("iconsearch.server")
@@ -30,6 +31,7 @@ live = db.LiveDB(cfg.db_path)
 WEB_DIR = config_mod.ROOT / "web"
 WORD_RE = re.compile(r"\w+", re.UNICODE)
 synonyms = Synonyms.load(cfg.synonyms_path)
+cart = Cart(cfg.cart_path)
 
 # Variant display order for sibling lists and the "any" preference.
 VARIANT_ORDER = ["default", "regular", "outline", "thin", "light", "bold", "fill", "filled",
@@ -444,6 +446,113 @@ def icon_svg(
         "Cache-Control": "public, max-age=86400",
         "Access-Control-Allow-Origin": "*",
     })
+
+
+# ---------------------------------------------------------------- cart
+
+def require_cart_password(given: str | None):
+    if not cfg.cart_password:
+        raise HTTPException(404, "the cart is not set up (no secrets/cart_password)")
+    if not given or not secrets.compare_digest(given.encode(), cfg.cart_password.encode()):
+        raise HTTPException(401, "wrong cart password")
+
+
+def require_local(request: Request):
+    """Only requests made on this server itself, never ones nginx forwards from the internet.
+
+    nginx always sets X-Forwarded-For/X-Real-IP, so their presence alone marks a proxied request.
+    """
+    host = request.client.host if request.client else ""
+    if host not in ("127.0.0.1", "::1") or "x-forwarded-for" in request.headers or "x-real-ip" in request.headers:
+        raise HTTPException(403, "this endpoint is only available on the server itself")
+
+
+def cart_icon(icon_id: str) -> dict:
+    row = conn().execute(f"SELECT {ICON_FIELDS} FROM icons i WHERE i.id = ?", (icon_id,)).fetchone()
+    if not row:
+        raise HTTPException(404, "icon not found")
+    d = icon_dict(row)
+    return {k: d[k] for k in ICON_KEYS}
+
+
+def cart_response(items: list[dict]) -> dict:
+    return {"items": items}
+
+
+def cart_edit(fn, *args, **kwargs) -> dict:
+    try:
+        return cart_response(fn(*args, **kwargs))
+    except KeyError:
+        raise HTTPException(404, "cart entry not found") from None
+    except ValueError as e:
+        raise HTTPException(422, str(e)) from None
+
+
+@app.get("/api/cart")
+def cart_get(x_cart_password: str | None = Header(None)):
+    require_cart_password(x_cart_password)
+    return cart_response(cart.items())
+
+
+@app.post("/api/cart/items")
+def cart_add(body: dict, x_cart_password: str | None = Header(None)):
+    """Body: {"icon_id": "lucide:house", "purpose"?: "..."}; the purpose defaults to the icon name."""
+    require_cart_password(x_cart_password)
+    icon = cart_icon(str(body.get("icon_id", "")))
+    purpose = body.get("purpose")
+    return cart_edit(cart.add, str(purpose) if purpose is not None else icon["name"], icon)
+
+
+@app.patch("/api/cart/items/{entry_id}")
+def cart_update(entry_id: str, body: dict, x_cart_password: str | None = Header(None)):
+    """Body: {"purpose"?: "...", "icon_id"?: "..."}; an icon_id replaces the entry's icon."""
+    require_cart_password(x_cart_password)
+    icon = cart_icon(str(body["icon_id"])) if body.get("icon_id") else None
+    purpose = body.get("purpose")
+    return cart_edit(cart.update, entry_id, purpose=str(purpose) if purpose is not None else None, icon=icon)
+
+
+@app.delete("/api/cart/items/{entry_id}")
+def cart_remove(entry_id: str, x_cart_password: str | None = Header(None)):
+    require_cart_password(x_cart_password)
+    return cart_edit(cart.remove, entry_id)
+
+
+@app.delete("/api/cart")
+def cart_clear(x_cart_password: str | None = Header(None)):
+    require_cart_password(x_cart_password)
+    return cart_edit(cart.clear)
+
+
+@app.get("/api/local/cart")
+def local_cart(request: Request, color: str = "000000", size: int = 256, stroke: float | None = None):
+    """Local only. Every cart entry with its purpose and, once an icon is assigned, the SVG file."""
+    require_local(request)
+    out = []
+    for item in cart.items():
+        icon, entry = item["icon"], {"purpose": item["purpose"], "icon_id": None, "filename": None, "svg": None}
+        if icon:
+            try:
+                doc = svg.build(icon["body"], icon["width"], icon["height"], color=color, size=size,
+                                stroke=stroke, is_stroke=bool(icon["is_stroke"]))
+            except svg.SvgParamError as e:
+                raise HTTPException(422, str(e)) from None
+            entry.update(icon_id=icon["id"], filename=f"{icon['prefix']}-{icon['name']}.svg", svg=doc)
+        out.append(entry)
+    return {"items": out}
+
+
+@app.post("/api/local/shopping-list")
+def local_shopping_list(request: Request, body: dict):
+    """Local only. Body: {"purposes": ["...", ...]}; adds them as entries without an icon.
+
+    Purposes already in the cart are skipped, so posting the same list twice is harmless.
+    """
+    require_local(request)
+    purposes = body.get("purposes")
+    if not isinstance(purposes, list) or not all(isinstance(p, str) for p in purposes):
+        raise HTTPException(422, 'body must be {"purposes": ["...", ...]}')
+    return cart_edit(cart.add_purposes, purposes)
 
 
 @app.get("/api/health")

@@ -22,6 +22,7 @@ class Config:
     host: str = "127.0.0.1"
     port: int = 8765
     basic_auth: str = ""
+    cart_password: str = ""
     png_size: int = 512
     data_dir: Path = ROOT / "data"
     schedule: str = "weekly"
@@ -49,6 +50,10 @@ class Config:
     def state_path(self) -> Path:
         return self.data_dir / "state.json"
 
+    @property
+    def cart_path(self) -> Path:
+        return self.data_dir / "cart.json"
+
 
 def load(path: Path | str | None = None) -> Config:
     path = Path(path or os.environ.get("ICONSEARCH_CONFIG") or ROOT / "config.toml")
@@ -61,6 +66,10 @@ def load(path: Path | str | None = None) -> Config:
     cfg.port = int(server.get("port", cfg.port))
     cfg.basic_auth = os.environ.get("ICONSEARCH_AUTH", str(server.get("basic_auth", "")))
     cfg.png_size = int(server.get("png_size", cfg.png_size))
+    # The cart password stays out of git: env var, else secrets/cart_password (gitignored).
+    secret = path.parent / "secrets" / "cart_password"
+    cfg.cart_password = os.environ.get("ICONSEARCH_CART_PASSWORD") or (
+        secret.read_text().strip() if secret.exists() else "")
 
     data_dir = Path(os.environ.get("ICONSEARCH_DATA") or ingest.get("data_dir", "data"))
     cfg.data_dir = data_dir if data_dir.is_absolute() else path.parent / data_dir

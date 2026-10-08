@@ -17,7 +17,7 @@ const store = {
 
 // ------------------------------------------------------------------ state
 const prefs = Object.assign(
-  { size: 128, stroke: 0, pngSize: 512, drag: "ppt" },
+  { size: 128, stroke: 0, pngSize: 512, drag: "ppt", cartWidth: 280 },
   store.get("prefs.v2", {}),
 );
 const S = {
@@ -32,6 +32,10 @@ const S = {
   favs: store.get("favs", []),
   recent: store.get("recent", []),
   coll: store.get("coll", []),     // [{id, prefix, name, width, height, body}]
+  cartKey: store.get("cartKey", null),  // cart password once unlocked on this browser
+  cartOpen: store.get("cartOpen", false),
+  cart: [],            // [{id, purpose, icon: {id, prefix, name, ...} | null}]
+  dragging: null,      // icon being dragged from a tile or the preview, for cart drops
   ctrl: null,
 };
 
@@ -145,6 +149,7 @@ function rerenderStroke() {
   }
   if (S.detail) renderPreview();
   renderCollection();
+  if (S.cartOpen) renderCart();
 }
 
 function bindControls() {
@@ -474,6 +479,7 @@ function setDrag(e, icon) {
   ghost.style.color = iconColor();
   dt.setDragImage(ghost, 32, 32);
   pushRecent(icon);
+  S.dragging = icon;
 }
 
 // ------------------------------------------------------------------ clipboard
@@ -610,6 +616,153 @@ function showSimilar(icon = S.detail) {
   setView("similar");
 }
 
+// ------------------------------------------------------------------ shopping cart
+// A password-unlocked panel on the left, stored on the server (data/cart.json).
+// Dropping an icon on empty space adds an entry; dropping on an entry replaces its icon.
+async function cartApi(method, path = "", body) {
+  const opts = { method, headers: { "X-Cart-Password": S.cartKey || "" } };
+  if (body) { opts.headers["Content-Type"] = "application/json"; opts.body = JSON.stringify(body); }
+  const d = await api(`/api/cart${path}`, opts);
+  S.cart = d.items;
+  return d;
+}
+
+async function unlockCart() {
+  const pw = prompt("Cart password");
+  if (!pw) return;
+  S.cartKey = pw;
+  try {
+    await cartApi("GET");
+  } catch (e) {
+    S.cartKey = null;
+    toast(e.message === "401" || e.message.includes("wrong") ? "Wrong password" : `Cart: ${e.message}`, true);
+    return;
+  }
+  store.set("cartKey", pw);
+  setCartOpen(true);
+}
+
+function lockCart() {
+  S.cartKey = null; S.cart = [];
+  store.set("cartKey", null);
+  setCartOpen(false);
+}
+
+function setCartOpen(open) {
+  S.cartOpen = open;
+  store.set("cartOpen", open);
+  $("#cart").hidden = !open;
+  $("#cart-toggle").textContent = S.cartKey ? "🛒 Cart" : "🔒 Cart";
+  $("#cart-toggle").classList.toggle("on", open);
+  if (open) renderCart();
+}
+
+async function loadCart() {
+  try {
+    await cartApi("GET");
+    setCartOpen(S.cartOpen);
+  } catch (e) {
+    if (e.message.includes("wrong")) lockCart();   // password changed on the server
+    else setCartOpen(false);
+  }
+}
+
+function renderCart() {
+  const list = $("#cart-items");
+  list.innerHTML = "";
+  const filled = S.cart.filter(x => x.icon).length;
+  $("#cart-count").textContent = S.cart.length ? `${filled}/${S.cart.length}` : "";
+  for (const entry of S.cart) {
+    const li = document.createElement("li");
+    li.className = "cart-item" + (entry.icon ? "" : " open");
+    li.dataset.id = entry.id;
+    const slot = document.createElement("button");
+    slot.className = "cart-icon";
+    if (entry.icon) {
+      slot.innerHTML = inlineSvg(entry.icon);
+      slot.title = `${entry.icon.name} · ${setName(entry.icon.prefix)} (drop an icon here to replace it)`;
+      slot.onclick = () => openDetail(entry.icon);
+    } else {
+      slot.textContent = "?";
+      slot.title = "No icon yet: drop one here";
+    }
+    const input = document.createElement("input");
+    input.type = "text";
+    input.value = entry.purpose;
+    input.placeholder = "purpose";
+    input.setAttribute("aria-label", "Purpose");
+    input.addEventListener("keydown", e => { if (e.key === "Enter") input.blur(); });
+    input.addEventListener("change", async () => {
+      try { await cartApi("PATCH", `/items/${entry.id}`, { purpose: input.value }); }
+      catch (e) { toast(`Cart: ${e.message}`, true); }
+    });
+    const del = document.createElement("button");
+    del.className = "cart-del";
+    del.textContent = "×";
+    del.title = "Remove from cart";
+    del.onclick = () => cartDo(() => cartApi("DELETE", `/items/${entry.id}`));
+    li.append(slot, input, del);
+    list.appendChild(li);
+  }
+}
+
+async function cartDo(fn) {
+  try { await fn(); } catch (e) { toast(`Cart: ${e.message}`, true); }
+  renderCart();
+}
+
+function bindCart() {
+  $("#cart-toggle").onclick = () => S.cartKey ? setCartOpen(!S.cartOpen) : unlockCart();
+  $("#cart-lock").onclick = lockCart;
+  $("#cart-clear").onclick = () => {
+    if (S.cart.length && confirm(`Remove all ${S.cart.length} entries from the cart?`)) cartDo(() => cartApi("DELETE"));
+  };
+
+  const cart = $("#cart");
+  const clearHover = () => { for (const el of cart.querySelectorAll(".drop-on")) el.classList.remove("drop-on"); };
+  cart.addEventListener("dragover", e => {
+    if (!S.dragging) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "copy";
+    const target = e.target.closest(".cart-item") || cart;
+    if (!target.classList.contains("drop-on")) { clearHover(); target.classList.add("drop-on"); }
+  });
+  cart.addEventListener("dragleave", e => { if (!cart.contains(e.relatedTarget)) clearHover(); });
+  cart.addEventListener("drop", e => {
+    const icon = S.dragging;
+    clearHover();
+    if (!icon) return;
+    e.preventDefault();
+    const li = e.target.closest(".cart-item");
+    cartDo(() => li
+      ? cartApi("PATCH", `/items/${li.dataset.id}`, { icon_id: icon.id })
+      : cartApi("POST", "/items", { icon_id: icon.id }));
+  });
+  document.addEventListener("dragend", () => { S.dragging = null; clearHover(); });
+
+  // Resize by dragging the panel's right edge.
+  cart.style.width = `${prefs.cartWidth}px`;
+  $("#cart-resize").addEventListener("pointerdown", e => {
+    e.preventDefault();
+    const handle = e.target;
+    handle.setPointerCapture(e.pointerId);
+    const left = cart.getBoundingClientRect().left;
+    const move = ev => {
+      prefs.cartWidth = Math.round(Math.max(180, Math.min(window.innerWidth * 0.7, ev.clientX - left)));
+      cart.style.width = `${prefs.cartWidth}px`;
+    };
+    const up = () => {
+      handle.removeEventListener("pointermove", move);
+      handle.removeEventListener("pointerup", up);
+      document.body.classList.remove("resizing");
+      savePrefs();
+    };
+    document.body.classList.add("resizing");
+    handle.addEventListener("pointermove", move);
+    handle.addEventListener("pointerup", up);
+  });
+}
+
 // ------------------------------------------------------------------ events
 function bindGrid() {
   const grid = $("#grid");
@@ -719,6 +872,8 @@ async function boot() {
   bindControls();
   bindGrid();
   bindKeys();
+  bindCart();
   renderCollection();
+  if (S.cartKey) loadCart(); else setCartOpen(false);
   boot();
 })();

@@ -73,6 +73,7 @@ def data_env(tmp_path_factory, fake_tarball):
 
     os.environ["ICONSEARCH_CONFIG"] = str(cfg_path)
     os.environ["ICONSEARCH_NO_SCHEDULER"] = "1"
+    os.environ["ICONSEARCH_CART_PASSWORD"] = "pw"
     return cfg_path
 
 
