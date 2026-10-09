@@ -162,7 +162,7 @@ output { font-size: 12px; min-width: 32px; color: var(--muted); font-variant-num
   background: var(--surface); border-right: 1px solid var(--border); }
 .cart.drop-on { box-shadow: inset 0 0 0 2px var(--accent); }
 .cart-head { display: flex; align-items: center; gap: 8px; padding: 12px 14px 8px; }
-.cart-head #cart-clear { margin-left: auto; }
+.cart-head #cart-zip { margin-left: auto; }
 .cart-items { list-style: none; margin: 0; padding: 0 8px; overflow-y: auto; }
 .cart-item { display: flex; align-items: center; gap: 8px; padding: 4px 6px; border-radius: 8px; border: 1px solid transparent; }
 .cart-item.drop-on { border-color: var(--accent); background: var(--accent-soft); }

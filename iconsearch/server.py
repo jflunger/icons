@@ -15,10 +15,13 @@ import threading
 import zipfile
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
 from fastapi import FastAPI, Header, HTTPException, Query, Request
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
+from mcp.server.mcpserver import MCPServer
+from mcp.server.mcpserver.exceptions import ToolError
 
 from . import config as config_mod
 from . import db, svg
@@ -115,7 +118,10 @@ async def lifespan(_app):
                         stream=sys.stdout)
     if os.environ.get("ICONSEARCH_NO_SCHEDULER") != "1":
         scheduler.start()
-    yield
+    # A session manager runs only once, so each app start (and each test client) builds a new one.
+    mcp.streamable_http_app(stateless_http=True, json_response=True)
+    async with mcp.session_manager.run():
+        yield
     scheduler.stop()
 
 
@@ -126,7 +132,8 @@ app = FastAPI(title="Icon Search", lifespan=lifespan, docs_url="/api/docs", redo
 
 @app.middleware("http")
 async def basic_auth(request: Request, call_next):
-    if cfg.basic_auth:
+    # /mcp only answers this server itself (see mcp_endpoint), so it skips the site password.
+    if cfg.basic_auth and request.url.path != "/mcp":
         header = request.headers.get("authorization", "")
         ok = False
         if header.lower().startswith("basic "):
@@ -390,26 +397,40 @@ def zip_collection(
     ).fetchall() if wanted else []
     if not rows:
         raise HTTPException(404, "no matching icons")
+    return icons_zip([(f"{r['prefix']}-{r['name']}.svg", r) for r in rows], f"icons-{len(rows)}.zip",
+                     color=color, size=size, stroke=stroke)
+
+
+def icons_zip(files: list[tuple[str, dict]], zip_name: str, *, color: str, size: int, stroke: float | None,
+              licenses: bool = True) -> Response:
+    return Response(icons_zip_bytes(files, color=color, size=size, stroke=stroke, licenses=licenses),
+                    media_type="application/zip",
+                    headers={"Content-Disposition": f'attachment; filename="{zip_name}"'})
+
+
+def icons_zip_bytes(files: list[tuple[str, dict]], *, color: str, size: int, stroke: float | None,
+                    licenses: bool = True) -> bytes:
+    """A ZIP of rendered SVGs (filename, icon), plus each included set's LICENSE unless `licenses` is off."""
+    c = conn()
     buf = io.BytesIO()
-    prefixes = sorted({r["prefix"] for r in rows})
+    prefixes = sorted({icon["prefix"] for _, icon in files})
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
-        for r in rows:
+        for filename, icon in files:
             try:
-                doc = svg.build(r["body"], r["width"], r["height"], color=color, size=size,
-                                stroke=stroke, is_stroke=bool(r["is_stroke"]))
+                doc = svg.build(icon["body"], icon["width"], icon["height"], color=color, size=size,
+                                stroke=stroke, is_stroke=bool(icon["is_stroke"]))
             except svg.SvgParamError as e:
                 raise HTTPException(422, str(e)) from None
-            zf.writestr(f"{r['prefix']}-{r['name']}.svg", doc)
-        summary = []
-        for s in c.execute(f"SELECT * FROM sets WHERE prefix IN ({','.join('?' * len(prefixes))})", prefixes):
-            summary.append(f"{s['name']} ({s['prefix']}) v{s['version']}\n  by {s['author'] or '?'}\n"
-                           f"  license: {s['license_title'] or s['license_spdx']} {s['license_url'] or ''}\n")
-            if s["license_text"]:
-                zf.writestr(f"LICENSES/{s['prefix']}-LICENSE.txt", s["license_text"])
-        zf.writestr("LICENSES/README.txt", "Icons in this archive come from these sets:\n\n" + "\n".join(summary))
-    return Response(buf.getvalue(), media_type="application/zip", headers={
-        "Content-Disposition": f'attachment; filename="icons-{len(rows)}.zip"',
-    })
+            zf.writestr(filename, doc)
+        if licenses:
+            summary = []
+            for s in c.execute(f"SELECT * FROM sets WHERE prefix IN ({','.join('?' * len(prefixes))})", prefixes):
+                summary.append(f"{s['name']} ({s['prefix']}) v{s['version']}\n  by {s['author'] or '?'}\n"
+                               f"  license: {s['license_title'] or s['license_spdx']} {s['license_url'] or ''}\n")
+                if s["license_text"]:
+                    zf.writestr(f"LICENSES/{s['prefix']}-LICENSE.txt", s["license_text"])
+            zf.writestr("LICENSES/README.txt", "Icons in this archive come from these sets:\n\n" + "\n".join(summary))
+    return buf.getvalue()
 
 
 @app.api_route("/icon/{prefix}/{filename}", methods=["GET", "HEAD"])
@@ -457,13 +478,18 @@ def require_cart_password(given: str | None):
         raise HTTPException(401, "wrong cart password")
 
 
-def require_local(request: Request):
-    """Only requests made on this server itself, never ones nginx forwards from the internet.
+def is_local(request: Request) -> bool:
+    """True for requests made on this server itself, never ones nginx forwards from the internet.
 
     nginx always sets X-Forwarded-For/X-Real-IP, so their presence alone marks a proxied request.
     """
     host = request.client.host if request.client else ""
-    if host not in ("127.0.0.1", "::1") or "x-forwarded-for" in request.headers or "x-real-ip" in request.headers:
+    return host in ("127.0.0.1", "::1") and "x-forwarded-for" not in request.headers \
+        and "x-real-ip" not in request.headers
+
+
+def require_local(request: Request):
+    if not is_local(request):
         raise HTTPException(403, "this endpoint is only available on the server itself")
 
 
@@ -524,6 +550,39 @@ def cart_clear(x_cart_password: str | None = Header(None)):
     return cart_edit(cart.clear)
 
 
+UNSAFE_FILENAME_RE = re.compile(r'[\x00-\x1f/\\:*?"<>|]+')
+
+
+def purpose_filenames(items: list[dict]) -> list[str]:
+    """A unique, filesystem-safe "<purpose>.svg" for each item, in order."""
+    names, seen = [], set()
+    for item in items:
+        base = UNSAFE_FILENAME_RE.sub("-", item["purpose"]).strip(" .-")[:120] or item["icon"]["name"]
+        name, n = f"{base}.svg", 2
+        while name.lower() in seen:
+            name, n = f"{base} ({n}).svg", n + 1
+        seen.add(name.lower())
+        names.append(name)
+    return names
+
+
+@app.get("/api/cart/zip")
+def cart_zip(x_cart_password: str | None = Header(None), color: str = "000000", size: int = 256,
+             stroke: float | None = None):
+    """The cart's icons as a ZIP of SVGs named after their purposes. Entries without an icon are left out."""
+    require_cart_password(x_cart_password)
+    # Internal use only, so no LICENSES/ folder: just the purpose-named SVGs.
+    return icons_zip(cart_zip_files(), "icon-cart.zip", color=color, size=size, stroke=stroke, licenses=False)
+
+
+def cart_zip_files() -> list[tuple[str, dict]]:
+    """(purpose filename, icon) for each cart entry that has an icon."""
+    items = [i for i in cart.items() if i["icon"]]
+    if not items:
+        raise HTTPException(404, "the cart has no icons yet")
+    return list(zip(purpose_filenames(items), (i["icon"] for i in items)))
+
+
 @app.get("/api/local/cart")
 def local_cart(request: Request, color: str = "000000", size: int = 256, stroke: float | None = None):
     """Local only. Every cart entry with its purpose and, once an icon is assigned, the SVG file."""
@@ -553,6 +612,71 @@ def local_shopping_list(request: Request, body: dict):
     if not isinstance(purposes, list) or not all(isinstance(p, str) for p in purposes):
         raise HTTPException(422, 'body must be {"purposes": ["...", ...]}')
     return cart_edit(cart.add_purposes, purposes)
+
+
+# ---------------------------------------------------------------- MCP
+
+# Lets Claude on this server add to the shopping list and fetch the finished cart.
+# Picking the icons stays with the person in the web UI, so there are no search or assign tools.
+# Register with: claude mcp add --transport http icons http://127.0.0.1:9005/mcp
+mcp = MCPServer("icons", instructions=(
+    "The icon shopping cart of the Icon Search app. Add the purposes you need icons for with "
+    "add_to_shopping_list; the user then picks an icon for each in the web UI. Once they say "
+    "they are done, fetch the icons with get_cart_zip."))
+
+
+@mcp.tool()
+def add_to_shopping_list(purposes: list[str]) -> dict:
+    """Add entries to the icon shopping list, one per purpose (e.g. "Delete button", "Settings tab").
+
+    The user picks an icon for each purpose in the web UI. Purposes already in the cart are skipped.
+    """
+    before = {i["purpose"] for i in cart.items()}
+    try:
+        items = cart.add_purposes(purposes)
+    except ValueError as e:
+        raise ToolError(str(e)) from None
+    added = [i["purpose"] for i in items if i["purpose"] not in before]
+    return {"added": added, "already_in_cart": sorted({p.strip() for p in purposes} & before),
+            "waiting_for_icon": [i["purpose"] for i in items if not i["icon"]]}
+
+
+@mcp.tool()
+def get_cart_zip(path: str, color: str = "000000", size: int = 256, stroke: float | None = None) -> dict:
+    """Write the cart's chosen icons as a ZIP of SVGs named after their purposes ("Delete button.svg").
+
+    `path` is an absolute file path for the ZIP, or an existing directory to put icon-cart.zip in.
+    `color` is a hex colour without "#", `size` the SVG size in px, `stroke` an optional stroke width
+    for outline icons. Purposes the user has not picked an icon for yet are left out and listed.
+    """
+    dest = Path(path).expanduser()
+    if not dest.is_absolute():
+        raise ToolError("path must be absolute")
+    if dest.is_dir():
+        dest = dest / "icon-cart.zip"
+    try:
+        files = cart_zip_files()
+        data = icons_zip_bytes(files, color=color, size=size, stroke=stroke, licenses=False)
+    except HTTPException as e:
+        raise ToolError(e.detail) from None
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    dest.write_bytes(data)
+    return {"path": str(dest), "files": [f for f, _ in files],
+            "without_icon": [i["purpose"] for i in cart.items() if not i["icon"]]}
+
+
+class MCPEndpoint:
+    """A raw ASGI app (a class, so Starlette doesn't wrap it as a request handler), local requests only."""
+
+    async def __call__(self, scope, receive, send):
+        if not is_local(Request(scope)):
+            await JSONResponse({"detail": "this endpoint is only available on the server itself"},
+                               status_code=403)(scope, receive, send)
+            return
+        await mcp.session_manager.handle_request(scope, receive, send)
+
+
+app.router.add_route("/mcp", MCPEndpoint(), include_in_schema=False)
 
 
 @app.get("/api/health")

@@ -711,9 +711,28 @@ async function cartDo(fn) {
   renderCart();
 }
 
+// The password travels in a header, so the ZIP is fetched and saved via a blob link.
+async function downloadCartZip() {
+  if (!S.cart.some(x => x.icon)) { toast("The cart has no icons yet", true); return; }
+  const p = new URLSearchParams({ color: hex(), size: prefs.size });
+  if (prefs.stroke > 0) p.set("stroke", prefs.stroke);
+  try {
+    const r = await fetch(`/api/cart/zip?${p}`, { headers: { "X-Cart-Password": S.cartKey || "" } });
+    if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || r.status);
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(await r.blob());
+    a.download = "icon-cart.zip";
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+  } catch (e) {
+    toast(`Cart ZIP failed: ${e.message}`, true);
+  }
+}
+
 function bindCart() {
   $("#cart-toggle").onclick = () => S.cartKey ? setCartOpen(!S.cartOpen) : unlockCart();
   $("#cart-lock").onclick = lockCart;
+  $("#cart-zip").onclick = downloadCartZip;
   $("#cart-clear").onclick = () => {
     if (S.cart.length && confirm(`Remove all ${S.cart.length} entries from the cart?`)) cartDo(() => cartApi("DELETE"));
   };

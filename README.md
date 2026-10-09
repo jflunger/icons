@@ -135,6 +135,11 @@ it up, because a config change forces a rebuild. Enrichers are optional extras i
 | GET, HEAD | `/icon/{prefix}/{name}.svg?color=&size=&stroke=&bg=&dl=` | PowerPoint-safe SVG |
 | GET | `/licenses` | license page |
 | GET | `/api/health` | DB age, counts, scheduler state |
+| POST | `/mcp` | MCP server (local only) for Claude: `add_to_shopping_list`, `get_cart_zip` |
+
+The MCP endpoint answers only requests made on this server, never ones nginx forwards. Register it with
+`claude mcp add --scope user --transport http icons http://127.0.0.1:9005/mcp`. Claude can only add purposes
+and write the finished cart ZIP to a path; you still pick the icons in the web UI.
 
 The SVG endpoint:
 - Replaces `currentColor` with the literal hex, and uses presentation attributes only (no `<style>`, no CSS variables).
